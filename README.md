@@ -12,6 +12,10 @@ A single-page, browser-local PDF signature and page numbering editor. No backend
 
 Remember signature stores the image in this browser's local storage only. Use Forget saved signature on shared computers. PDF contents remain in browser memory. A signature image is a visual mark, not a certificate-based digital signature. Editing a digitally signed PDF can invalidate its existing cryptographic signatures. Password-protected PDFs must be unlocked first.
 
+## Merge PDF tab
+
+Second tab, **Merge PDF**: add many PDFs/images, reorder (drag the ⠿ handle, or ▲▼ / ◀▶ buttons on touch), delete files or pages, select pages (shift-click for a range) and **Group** them into one item, then **Create PDF**. The list is auto-saved in this browser's IndexedDB, so switching tabs, creating a PDF, or reloading does not clear it. Use *Remove everything* on shared computers. Right-click (or ⋯) on a file or page for: rotate, duplicate, blank page, add PDFs/images at a position, split, copy to new item, reverse, preview, download just that item, merge selected pages into one PDF. Ctrl+Z / Ctrl+Y = undo/redo. *Sign / Number it* sends the merged PDF to the first tab.
+
 ## GitHub + Vercel
 
 Upload the contents of this folder to a GitHub repository. Import that repository in Vercel with Framework Preset **Other**, no build command, and output directory `.`. Deploy. The included vercel.json supplies the static configuration. No environment variables are required.
