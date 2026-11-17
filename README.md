@@ -1,0 +1,23 @@
+# Ink & Page
+
+A single-page, browser-local PDF signature and page numbering editor. No backend, account or document upload service required.
+
+## Use
+
+1. Upload a PDF.
+2. Choose a saved PNG/JPG/WebP signature image. Transparent PNG is recommended.
+3. Drag and resize the signature, then click **Apply to this page** or **Apply to All Pages**. Reapply to all pages after moving to update other pages.
+4. Optionally enable page numbering and select format, position, starting number and first PDF page.
+5. Download the edited PDF.
+
+Remember signature stores the image in this browser's local storage only. Use Forget saved signature on shared computers. PDF contents remain in browser memory. A signature image is a visual mark, not a certificate-based digital signature. Editing a digitally signed PDF can invalidate its existing cryptographic signatures. Password-protected PDFs must be unlocked first.
+
+## GitHub + Vercel
+
+Upload the contents of this folder to a GitHub repository. Import that repository in Vercel with Framework Preset **Other**, no build command, and output directory `.`. Deploy. The included vercel.json supplies the static configuration. No environment variables are required.
+
+For local preview, use any static HTTP server, such as `python -m http.server 8080`, and open http://localhost:8080. Serve over HTTPS in production.
+
+## Dependencies
+
+Vendored PDF.js 3.11.174 (Apache-2.0) and pdf-lib 1.17.1 (MIT). Their bundled copyright/license notices are retained. Google Fonts are optional; system fonts work offline. No document content is sent to Google Fonts.
