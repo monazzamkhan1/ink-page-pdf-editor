@@ -29,3 +29,9 @@ Vendored PDF.js 3.11.174 (Apache-2.0) and pdf-lib 1.17.1 (MIT). Their bundled co
 ## Signature tab: several images
 
 Add a signature, a stamp, etc. together; tap an image to select it, drag it into place, Apply. Tick "Apply all images together" to place everything at once, or type pages like `1,3-5,last`. One download contains all of them.
+
+## Merge recovery
+
+Normal merging preserves PDF text. If copying a PDF fails, the editor retries pages individually and renders incompatible pages from the local PDF.js preview. A completion message reports how many pages were exported as images. Those pages retain their visible appearance and rotation, but text is no longer selectable and interactive fields are flattened.
+
+Enable **Compatibility mode (PDF pages as images)** to render all PDF pages directly when a troublesome document still fails. This can take longer and produce a larger download, particularly for large groups. Pages render one at a time at up to 144 DPI with a canvas size limit. Nothing is uploaded and the saved source files, groups and page order are not removed by export. If a page cannot render, the error identifies its source file and page instead of silently omitting it.

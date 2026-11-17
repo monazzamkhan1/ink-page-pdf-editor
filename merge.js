@@ -236,7 +236,7 @@ async function imagePage(out,s){
   if($('mImg').value==='a4'){const land=img.width>img.height;pw=land?841.89:595.28;ph=land?595.28:841.89;const k=Math.min((pw-40)/img.width,(ph-40)/img.height);w=img.width*k;h=img.height*k;x=(pw-w)/2;y=(ph-h)/2;}
   out.addPage([pw,ph]).drawImage(img,{x,y,width:w,height:h});
 }
-async function build(pages,prog){
+async function buildDirect(pages,prog){
   const {PDFDocument,degrees}=PDFLib,out=await PDFDocument.create(),docs=new Map();
   const rot=(pg,p)=>{if(p.r)pg.setRotation(degrees((pg.getRotation().angle+p.r)%360));};
   for(let k=0;k<pages.length;){
@@ -252,9 +252,70 @@ async function build(pages,prog){
   }
   return out.save();
 }
+// PDF.js can display some PDFs whose internal objects cannot be copied by
+// pdf-lib. Keep normal pages editable; recover only failed source pages.
+async function renderedPage(out,s,p){
+  const source=await s.doc.getPage(p.i+1);
+  const rotation=((source.rotate+(p.r||0))%360+360)%360;
+  const size=source.getViewport({scale:1,rotation});
+  const scale=Math.min(2,Math.sqrt(8000000/(size.width*size.height)),8192/Math.max(size.width,size.height));
+  const view=source.getViewport({scale,rotation}),canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.ceil(view.width));canvas.height=Math.max(1,Math.ceil(view.height));
+  try{
+    await source.render({canvasContext:canvas.getContext('2d'),viewport:view,background:'#ffffff'}).promise;
+    const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Page image could not be encoded.')),'image/jpeg',.95));
+    const image=await out.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+    out.addPage([size.width,size.height]).drawImage(image,{x:0,y:0,width:size.width,height:size.height});
+  }finally{canvas.width=canvas.height=1;}
+}
+async function buildRecovered(pages,prog,force){
+  const {PDFDocument,degrees}=PDFLib,out=await PDFDocument.create(),docs=new Map();
+  let recovered=0;
+  for(let k=0;k<pages.length;k++){
+    const p=pages[k],s=p.blank?null:M.src.get(p.s);
+    try{
+      if(p.blank){const page=out.addPage([595.28,841.89]);if(p.r)page.setRotation(degrees(p.r));}
+      else if(!s)throw new Error('The source file is not available. Add this file again.');
+      else if(s.type==='img'){await imagePage(out,s);if(p.r){const page=out.getPage(out.getPageCount()-1);page.setRotation(degrees(p.r));}}
+      else{
+        let copied=false;
+        if(!force){
+          try{
+            if(!docs.has(s.id)){
+              try{docs.set(s.id,await PDFDocument.load(s.bytes.slice(),{updateMetadata:false}));}
+              catch{docs.set(s.id,null);}
+            }
+            const source=docs.get(s.id);
+            if(source){
+              // Isolate a bad object from the destination and verify serialization.
+              const temp=await PDFDocument.create();
+              const [page]=await temp.copyPages(source,[p.i]);temp.addPage(page);
+              if(p.r)page.setRotation(degrees((page.getRotation().angle+p.r)%360));
+              await temp.save();
+              const [clean]=await out.copyPages(temp,[0]);out.addPage(clean);copied=true;
+            }
+          }catch{/* Retry this page using its existing, local PDF.js preview. */}
+        }
+        if(!copied){await renderedPage(out,s,p);recovered++;}
+      }
+    }catch(e){throw new Error(`${s?s.name:'Blank page'} — page ${p.i+1} (output ${k+1}): ${e.message}`);}
+    if(prog)prog(k+1);await new Promise(resolve=>setTimeout(resolve));
+  }
+  const data=await out.save();M.recovered=recovered;return data;
+}
+async function build(pages,prog){
+  M.recovered=0;
+  if($('mCompat').checked)return buildRecovered(pages,prog,true);
+  try{return await buildDirect(pages,prog);}
+  catch(e){
+    say('Normal merge failed. Recovering pages from their previews…');
+    return buildRecovered(pages,prog,false);
+  }
+}
+const recoveryNote=()=>M.recovered?` ${M.recovered} PDF page(s) exported as images for compatibility; text on those pages is not selectable.`:'';
 async function dl(pages,name){
   if(!pages.length)return;
-  try{say('Building…');download(await build(pages),(safe(name)||'pages')+'.pdf','application/pdf');say(`Downloaded ${pages.length} page${pages.length>1?'s':''}.`);}
+  try{say('Building…');download(await build(pages),(safe(name)||'pages')+'.pdf','application/pdf');say(`Downloaded ${pages.length} page${pages.length>1?'s':''}.`+recoveryNote());}
   catch(err){say('Could not create PDF: '+err.message,1);}
 }
 const fileName=()=>(safe($('mName').value)||'merged').replace(/\.pdf$/i,'')+'.pdf';
@@ -264,7 +325,7 @@ $('mCreate').onclick=async()=>{
   try{
     M.out={data:await build(pages,k=>say(`Building… ${k} / ${pages.length} pages`)),name:fileName()};
     download(M.out.data,M.out.name,'application/pdf');
-    $('mRes').hidden=false;say(`Done: ${pages.length} pages. Your list is unchanged, so you can adjust and create again.`);
+    $('mRes').hidden=false;say(`Done: ${pages.length} pages. Your list is unchanged, so you can adjust and create again.`+recoveryNote());
   }catch(e){say('Could not create PDF: '+e.message,1);}
   finally{M.busy=false;render();}
 };

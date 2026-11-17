@@ -11,7 +11,7 @@
 <div class="workspace"><aside>
 <section><div class="section-title"><b>01</b><h2>Add files</h2></div><label class="upload" id="mDrop">↥ <strong>Add PDFs / Images</strong><small>Select many at once, or drop them here</small><input id="mInput" type="file" multiple accept="application/pdf,.pdf,image/*"></label><p class="hint">PDF, JPG, PNG, WebP. Add more any time.</p></section>
 <section><div class="section-title"><b>02</b><h2>Output</h2></div><label>File name<input id="mName" type="text" value="merged" style="display:block;width:100%;border:1px solid #e1e6dd;border-radius:6px;padding:9px 6px;margin-top:7px;font:inherit"></label><label>Image page size<select id="mImg"><option value="a4">Fit to A4</option><option value="orig">Original size</option></select></label></section>
-<button id="mCreate" class="primary" disabled>Create PDF ↓</button>
+<label class="check"><input id="mCompat" type="checkbox"> Compatibility mode (PDF pages as images)</label><p class="hint">Use if a PDF cannot merge normally. Preserves page appearance and order; text becomes non-selectable and the download may be larger.</p><button id="mCreate" class="primary" disabled>Create PDF ↓</button>
 <div id="mRes" class="mres" hidden><b>PDF ready ✓</b><div class="row" style="margin-top:8px"><button id="mAgain">Download again</button><button id="mToSign">Sign / Number it →</button></div></div>
 <p id="mStatus" class="hint" role="status">Add files to begin.</p>
 <button id="mClear" class="text-btn danger">Remove everything</button>
