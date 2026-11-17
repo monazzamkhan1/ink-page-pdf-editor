@@ -21,7 +21,7 @@ if(location.hash==='#merge')show('merge');
 const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('ink-page',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
 async function idbOp(mode,fn){const d=await idb();return new Promise((res,rej)=>{const t=d.transaction('kv',mode);const q=fn(t.objectStore('kv'));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);});}
 let st;const save=()=>{clearTimeout(st);st=setTimeout(()=>{const used=new Set(flat().map(p=>p.s));idbOp('readwrite',s=>s.put({uid:M.uid,gn:M.gn,blocks:M.blocks,src:[...M.src.values()].filter(x=>used.has(x.id)).map(({id,name,type,mime,bytes})=>({id,name,type,mime,bytes}))},'merge')).catch(()=>say('Auto-save failed (storage full?). Your list stays while this tab is open.',1));},500);};
-async function hydrate(s){if(s.type==='pdf')s.doc=await pdfjsLib.getDocument({data:s.bytes.slice(),isEvalSupported:false}).promise;else s.url=URL.createObjectURL(new Blob([s.bytes],{type:s.mime}));M.src.set(s.id,s);}
+async function hydrate(s){if(s.type==='pdf'){s.doc=await pdfjsLib.getDocument({data:s.bytes.slice(),isEvalSupported:false}).promise;s.encrypted=(await s.doc.getPermissions())!==null;}else s.url=URL.createObjectURL(new Blob([s.bytes],{type:s.mime}));M.src.set(s.id,s);}
 
 /* ---------- history ---------- */
 function change(){const n=snap();if(n!==M.cur){M.undo.push(M.cur);if(M.undo.length>60)M.undo.shift();M.redo=[];M.cur=n;}render();save();}
@@ -244,7 +244,7 @@ async function buildDirect(pages,prog){
     if(p.blank){rot(out.addPage([595.28,841.89]),p);k++;}
     else{
       const s=M.src.get(p.s);let j=k;while(j<pages.length&&!pages[j].blank&&pages[j].s===s.id)j++;const first=out.getPageCount();
-      if(s.type==='pdf'){let d=docs.get(s.id);if(!d){d=await PDFDocument.load(s.bytes.slice(),{ignoreEncryption:true});docs.set(s.id,d);}(await out.copyPages(d,pages.slice(k,j).map(x=>x.i))).forEach(x=>out.addPage(x));}
+      if(s.type==='pdf'){let d=docs.get(s.id);if(!d){d=await PDFDocument.load(s.bytes.slice(),{updateMetadata:false});docs.set(s.id,d);}(await out.copyPages(d,pages.slice(k,j).map(x=>x.i))).forEach(x=>out.addPage(x));}
       else for(let q=k;q<j;q++)await imagePage(out,s);
       for(let q=k;q<j;q++)rot(out.getPage(first+q-k),pages[q]);k=j;
     }
@@ -282,7 +282,7 @@ async function buildRecovered(pages,prog,force){
         if(!force){
           try{
             if(!docs.has(s.id)){
-              try{docs.set(s.id,await PDFDocument.load(s.bytes.slice(),{updateMetadata:false}));}
+              try{docs.set(s.id,s.encrypted?null:await PDFDocument.load(s.bytes.slice(),{updateMetadata:false}));}
               catch{docs.set(s.id,null);}
             }
             const source=docs.get(s.id);
@@ -306,6 +306,7 @@ async function buildRecovered(pages,prog,force){
 async function build(pages,prog){
   M.recovered=0;
   if($('mCompat').checked)return buildRecovered(pages,prog,true);
+  if(pages.some(p=>!p.blank&&M.src.get(p.s)?.encrypted))return buildRecovered(pages,prog,false);
   try{return await buildDirect(pages,prog);}
   catch(e){
     say('Normal merge failed. Recovering pages from their previews…');
