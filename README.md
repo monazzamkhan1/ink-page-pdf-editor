@@ -25,3 +25,7 @@ For local preview, use any static HTTP server, such as `python -m http.server 80
 ## Dependencies
 
 Vendored PDF.js 3.11.174 (Apache-2.0) and pdf-lib 1.17.1 (MIT). Their bundled copyright/license notices are retained. Google Fonts are optional; system fonts work offline. No document content is sent to Google Fonts.
+
+## Signature tab: several images
+
+Add a signature, a stamp, etc. together; tap an image to select it, drag it into place, Apply. Tick "Apply all images together" to place everything at once, or type pages like `1,3-5,last`. One download contains all of them.

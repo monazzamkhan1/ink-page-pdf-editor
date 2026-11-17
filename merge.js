@@ -31,6 +31,7 @@ $('mUndo').onclick=undo;$('mRedo').onclick=redo;
 
 /* ---------- adding files (new item, or into an existing file at a position) ---------- */
 async function addFiles(files,tgt){
+  let lastId=null;
   for(const f of files){
     try{
       const isPdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
@@ -39,9 +40,10 @@ async function addFiles(files,tgt){
       await hydrate(s);const n=isPdf?s.doc.numPages:1;
       const pages=Array.from({length:n},(_,i)=>({id:nid('p'),s:s.id,i}));
       const b=tgt&&M.blocks.find(x=>x.id===tgt.b);
-      if(b){b.pages.splice(tgt.at,0,...pages);tgt.at+=n;M.open.add(b.id);}else M.blocks.push({id:nid('b'),name:base(f.name),pages});
+      if(b){b.pages.splice(tgt.at,0,...pages);tgt.at+=n;M.open.add(b.id);lastId=pages[n-1].id;}else M.blocks.push({id:nid('b'),name:base(f.name),pages});
     }catch(e){say(`${f.name}: ${e.name==='PasswordException'?'password-protected PDF, unlock it first':e.message}`,1);}
   }
+  if(lastId){M.selP=new Set([lastId]);M.selB.clear();M.last0=lastId;}
   change();
 }
 $('mInput').onchange=async e=>{const f=[...e.target.files];e.target.value='';await addFiles(f);};
@@ -73,32 +75,42 @@ const cv=p=>`<div class="th r${p.r||0}"><canvas data-s="${p.s||''}" data-i="${p.
 function render(){
   const total=flat().length;
   $('mList').innerHTML=M.blocks.map((b,bi)=>{
-    const sel=M.selB.has(b.id),open=M.open.has(b.id),allSel=b.pages.every(p=>M.selP.has(p.id));
+    const ip=insPoint(b),where=ip<b.pages.length?`after page ${ip}`:'at end',sel=M.selB.has(b.id),open=M.open.has(b.id),allSel=b.pages.every(p=>M.selP.has(p.id));
     return `<div class="blk${sel?' sel':''}" data-b="${b.id}"><div class="bh"><span class="grip" draggable="true" title="Drag to reorder">⠿</span><input type="checkbox" data-act="selb"${sel?' checked':''} title="Select"><div class="cover">${cv(b.pages[0])}</div><div class="bi"><input class="bname" data-act="name" value="${esc(b.name)}"><small>${b.group?'Group · ':''}${b.pages.length} page${b.pages.length>1?'s':''}</small></div><div class="ba"><button data-act="up"${bi?'':' disabled'}>▲</button><button data-act="dn"${bi<M.blocks.length-1?'':' disabled'}>▼</button><button data-act="tog">${open?'Hide pages':'Pages'}</button><button data-act="menu" title="More (or right-click)">⋯</button><button data-act="del" class="danger">✕</button></div></div>`+
-      (open?`<div class="pg"><div class="pghead"><button data-act="selall">${allSel?'Deselect all pages':'Select all pages'}</button><button data-act="blankend">＋ Blank page</button><button data-act="addin">＋ Add files here</button></div>${b.pages.map((p,pi)=>`<div class="pc${M.selP.has(p.id)?' sel':''}" draggable="true" data-p="${p.id}"><input type="checkbox" data-act="selp"${M.selP.has(p.id)?' checked':''}>${cv(p)}<span>${pi+1}${p.blank?' · blank':''}</span><div class="pa"><button data-act="pl"${pi?'':' disabled'}>◀</button><button data-act="pr"${pi<b.pages.length-1?'':' disabled'}>▶</button><button data-act="rotp">⟳</button><button data-act="menu">⋯</button><button data-act="pd" class="danger">✕</button></div></div>`).join('')}</div>`:'')+'</div>';
+      (open?`<div class="pg"><div class="pghead"><button data-act="selall">${allSel?'Deselect all pages':'Select all pages'}</button><button data-act="blankhere">＋ Blank page ${where}</button><button data-act="addhere">＋ Add files ${where}</button></div>${b.pages.map((p,pi)=>`<div class="pc${M.selP.has(p.id)?' sel':''}" draggable="true" data-p="${p.id}"><input type="checkbox" data-act="selp"${M.selP.has(p.id)?' checked':''}>${cv(p)}<span>${pi+1}${p.blank?' · blank':''}</span><div class="pa"><button data-act="pl"${pi?'':' disabled'}>◀</button><button data-act="pr"${pi<b.pages.length-1?'':' disabled'}>▶</button><button data-act="rotp">⟳</button><button data-act="menu">⋯</button><button data-act="pd" class="danger">✕</button></div></div>`).join('')}</div>`:'')+'</div>';
   }).join('')||'<p class="hint" style="text-align:center;margin:80px 0">Your files will appear here.</p>';
   $('mList').querySelectorAll('canvas').forEach(c=>io.observe(c));
   $('mCount').textContent=M.blocks.length?`${M.blocks.length} item${M.blocks.length>1?'s':''} · ${total} page${total>1?'s':''}`:'Nothing added yet';
   const n=M.selP.size||M.selB.size;$('mBar').hidden=!n;
-  if(n){$('mSel').textContent=`${n} ${M.selP.size?'page':'file'}${n>1?'s':''} selected`;$('mGroup').disabled=n<2;$('mCopy').hidden=!M.selP.size;}
+  if(n){const p1=M.selP.size;$('mSel').textContent=`${n} ${p1?'page':'file'}${n>1?'s':''} selected`;$('mGroup').textContent=p1===1?'Make its own PDF item':'Merge into one PDF';$('mGroup').disabled=p1?false:n<2;['mCopy','mBlank','mAddF'].forEach(k=>$(k).hidden=!p1);}
   $('mUndo').disabled=!M.undo.length;$('mRedo').disabled=!M.redo.length;$('mCreate').disabled=!total||M.busy;
 }
 
 /* ---------- helpers for operations ---------- */
 const swap=(a,i,j)=>{[a[i],a[j]]=[a[j],a[i]];};
+const insPoint=b=>{let at=-1;b.pages.forEach((p,i)=>{if(M.selP.has(p.id))at=i;});if(at<0&&M.last0)at=b.pages.findIndex(p=>p.id===M.last0);return at<0?b.pages.length:at+1;};
 const selPages=()=>M.selP.size?flat().filter(p=>M.selP.has(p.id)):M.blocks.filter(b=>M.selB.has(b.id)).flatMap(b=>b.pages);
 function group(){
   const g0=()=>({id:nid('b'),name:`Group ${++M.gn}`,group:true,pages:[]});
-  if(M.selP.size>1){
+  if(M.selP.size>=1){
     const out=[];let g=null;
-    for(const b of M.blocks){const mine=b.pages.filter(p=>M.selP.has(p.id));if(mine.length&&!g){g=g0();out.push(g);}if(mine.length){g.pages.push(...mine);b.pages=b.pages.filter(p=>!M.selP.has(p.id));}if(b.pages.length)out.push(b);}
+    for(const b of M.blocks){
+      const runs=[];for(const p of b.pages){const f=M.selP.has(p.id),l=runs[runs.length-1];if(l&&l.f===f)l.p.push(p);else runs.push({f,p:[p]});}
+      if(!runs.some(r=>r.f)){out.push(b);continue;}
+      let first=true;
+      for(const r of runs){
+        if(r.f){if(!g){g=g0();out.push(g);}g.pages.push(...r.p);}
+        else{if(first){b.pages=r.p;out.push(b);}else{const nb={...b,id:nid('b'),name:b.name+' (cont.)',pages:r.p};if(M.open.has(b.id))M.open.add(nb.id);out.push(nb);}first=false;}
+      }
+    }
     M.blocks=out;M.open.add(g.id);
+    if(g.pages.length===1)g.name=g.pages.length&&M.src.get(g.pages[0].s)?base(M.src.get(g.pages[0].s).name)+' p'+(g.pages[0].i+1):'Page';
   }else if(M.selB.size>1){
     const g=g0(),out=[];
     for(const b of M.blocks){if(M.selB.has(b.id)){if(!g.pages.length)out.push(g);g.pages.push(...b.pages);}else out.push(b);}
     M.blocks=out;
   }else return;
-  M.selP.clear();M.selB.clear();M.last0=null;change();say('Merged into one PDF item. Rename it or drag it where you want.');
+  M.selP.clear();M.selB.clear();M.last0=null;change();say('Done. It stays in the same place in the order. Use ▲▼ or drag to move it.');
 }
 function delSel(){
   const n=M.selP.size||M.selB.size;if(!n||!confirm(`Delete ${n} selected ${M.selP.size?'page':'file'}${n>1?'s':''}?`))return;
@@ -106,7 +118,12 @@ function delSel(){
   M.blocks=M.blocks.filter(b=>b.pages.length);M.selP.clear();M.selB.clear();change();
 }
 const copyNew=(pages,after)=>{const b={id:nid('b'),name:'Copy',pages:pages.map(clone)};const i=M.blocks.findIndex(x=>x.id===after);M.blocks.splice(i+1,0,b);M.open.add(b.id);M.selP.clear();};
-$('mGroup').onclick=group;$('mDel').onclick=delSel;
+$('mGroup').onclick=group;
+$('mBlank').onclick=()=>{if(!M.selP.size)return;const ps=selPages(),l=loc(ps[ps.length-1].id),id=nid('p');l.b.pages.splice(l.i+1,0,{id,s:null,i:0,blank:1});M.selP=new Set([id]);M.last0=id;M.open.add(l.b.id);change();};
+$('mAddF').onclick=()=>{if(!M.selP.size)return;const ps=selPages(),l=loc(ps[ps.length-1].id);pick(l.b.id,l.i+1);};
+const moveSel=(arr,sel,d)=>{if(d<0){for(let i=1;i<arr.length;i++)if(sel(arr[i])&&!sel(arr[i-1]))swap(arr,i,i-1);}else for(let i=arr.length-2;i>=0;i--)if(sel(arr[i])&&!sel(arr[i+1]))swap(arr,i,i+1);};
+const moveBar=d=>{if(M.selP.size)M.blocks.forEach(b=>moveSel(b.pages,p=>M.selP.has(p.id),d));else if(M.selB.size)moveSel(M.blocks,b=>M.selB.has(b.id),d);change();};
+$('mUp').onclick=()=>moveBar(-1);$('mDn').onclick=()=>moveBar(1);$('mDel').onclick=delSel;
 $('mNone').onclick=()=>{M.selP.clear();M.selB.clear();render();};
 $('mCopy').onclick=()=>{const ps=selPages();if(!ps.length)return;const l=loc(ps[ps.length-1].id);copyNew(ps,l.b.id);change();};
 $('mRot').onclick=()=>{selPages().forEach(p=>p.r=((p.r||0)+90)%360);change();};
@@ -120,7 +137,7 @@ $('mClear').onclick=async()=>{if(!confirm('Remove all files and groups from this
 /* ---------- the one place every action runs (buttons AND menu) ---------- */
 function run(m,bid,pid,e){
   const bi=M.blocks.findIndex(x=>x.id===bid),b=M.blocks[bi],l=pid&&loc(pid),tog=(s,id)=>s.has(id)?s.delete(id):s.add(id);
-  const insBlank=at=>{b.pages.splice(at,0,{id:nid('p'),s:null,i:0,blank:1});M.open.add(b.id);};
+  const insBlank=at=>{const id=nid('p');b.pages.splice(at,0,{id,s:null,i:0,blank:1});M.open.add(b.id);M.selB.clear();M.selP=new Set([id]);M.last0=id;};
   switch(m){
     case 'selb':tog(M.selB,bid);M.selP.clear();break;
     case 'selp':{M.selB.clear();
@@ -139,6 +156,9 @@ function run(m,bid,pid,e){
     case 'dup':M.blocks.splice(bi+1,0,{...b,id:nid('b'),name:b.name+' copy',pages:b.pages.map(clone)});break;
     case 'rev':b.pages.reverse();break;
     case 'blankend':insBlank(b.pages.length);break;
+    case 'blankhere':insBlank(insPoint(b));break;
+    case 'addhere':return pick(bid,insPoint(b));
+    case 'own':M.selB.clear();M.selP=new Set([pid]);return group();
     case 'addin':return pick(bid,b.pages.length);
     case 'splitall':if(b.pages.length>30&&!confirm(`Split into ${b.pages.length} separate items?`))return;M.blocks.splice(bi,1,...b.pages.map((p,i)=>({id:nid('b'),name:`${b.name} p${i+1}`,pages:[p]})));M.selB.delete(bid);break;
     case 'dl':return dl(b.pages,b.name);
@@ -146,7 +166,7 @@ function run(m,bid,pid,e){
     case 'pd':{l.b.pages.splice(l.i,1);M.selP.delete(pid);if(!l.b.pages.length)M.blocks.splice(M.blocks.indexOf(l.b),1);break;}
     case 'rotp':{const p=l.b.pages[l.i];p.r=((p.r||0)+90)%360;break;}
     case 'dupp':l.b.pages.splice(l.i+1,0,clone(l.b.pages[l.i]));break;
-    case 'blankb':case 'blanka':{const bb=l.b;bb.pages.splice(l.i+(m==='blanka'?1:0),0,{id:nid('p'),s:null,i:0,blank:1});M.open.add(bb.id);break;}
+    case 'blankb':case 'blanka':{const bb=l.b,id=nid('p');bb.pages.splice(l.i+(m==='blanka'?1:0),0,{id,s:null,i:0,blank:1});M.open.add(bb.id);M.selP=new Set([id]);M.last0=id;break;}
     case 'addafter':return pick(l.b.id,l.i+1);
     case 'splith':{const rest=l.b.pages.splice(l.i);const nb={id:nid('b'),name:l.b.name+' (part 2)',group:l.b.group,pages:rest};M.blocks.splice(M.blocks.indexOf(l.b)+1,0,nb);M.open.add(nb.id);break;}
     case 'copynew':{const ps=M.selP.size>1&&M.selP.has(pid)?selPages():[l.b.pages[l.i]];copyNew(ps,l.b.id);break;}
@@ -175,7 +195,7 @@ function items(bid,pid){
   if(pid){
     const multi=M.selP.size>1&&M.selP.has(pid),n=M.selP.size,i=b.pages.findIndex(p=>p.id===pid);
     if(multi)I.push(['group',`Merge ${n} pages into one PDF`],['copynew',`Copy ${n} pages to a new item`],['rotsel','Rotate selected ⟳'],['dlsel','Download selected as PDF'],'-',['delsel',`Delete ${n} pages`,1]);
-    else I.push(['view','Preview page'],['rotp','Rotate page ⟳'],['dupp','Duplicate page'],'-',['blankb','Insert blank page before'],['blanka','Insert blank page after'],['addafter','Add PDF / images after this page…'],'-',...(i?[['splith','Split file before this page']]:[]),['copynew','Copy page to a new item'],['pd','Delete page',1]);
+    else I.push(['view','Preview page'],['rotp','Rotate page ⟳'],['dupp','Duplicate page'],['own','Make this page its own PDF item'],'-',['blankb','Insert blank page before'],['blanka','Insert blank page after'],['addafter','Add PDF / images after this page…'],'-',...(i?[['splith','Split file before this page']]:[]),['copynew','Copy page to a new item'],['pd','Delete page',1]);
   }else{
     if(M.selB.size>1&&M.selB.has(bid))I.push(['group',`Merge ${M.selB.size} files into one PDF`],['rotsel','Rotate selected ⟳'],['dlsel','Download selected as one PDF'],'-');
     I.push(['tog',M.open.has(bid)?'Collapse pages':'Expand into pages'],['ren','Rename'],['view','Preview first page'],'-',['rotall','Rotate all pages ⟳'],['dup','Duplicate'],['rev','Reverse page order'],'-',['blankend','Add blank page at end'],['addin','Add PDF / images into this file…'],...(b.pages.length>1?[['splitall','Split into single pages']]:[]),...(b.group?[['ungroup','Ungroup']]:[]),['dl','Download this as PDF'],'-',['top','Move to top'],['bottom','Move to bottom'],['del','Delete',1]);
