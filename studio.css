@@ -3,3 +3,5 @@
 .mobile-controls{display:none}@media(max-width:760px){.mobile-controls{display:flex;width:100%}.controls-collapsed>aside{display:none}}
 
 .hero .primary{width:auto}
+
+.row>button{flex:1 1 100px}

@@ -1,5 +1,5 @@
 import fs from 'node:fs';import {spawnSync} from 'node:child_process';
-const files=['core.js','app.js','merge.js','modern.js','toolkit.js','site.js','boot.js','ads-config.js','scripts/build.mjs','scripts/catalog.mjs'];let failed=false;
+const files=['core.js','app.js','merge.js','modern.js','toolkit.js','site.js','boot.js','ads-config.js','ads-slot.js','scripts/build.mjs','scripts/catalog.mjs'];let failed=false;
 for(const file of files){const r=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(r.status){console.error(r.stderr);failed=true;}}
 if(process.argv.includes('--types')){
  // Runtime schema guards are used in this JavaScript application. This command

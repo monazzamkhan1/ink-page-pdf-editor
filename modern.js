@@ -16,12 +16,12 @@ async function disposeViewer(){
   if(Studio.loading){try{await Studio.loading.destroy();}catch{}Studio.loading=null;}
   InkCore.resetDocument(state,$('remember').checked);Studio.history=[];Studio.redo=[];renderStamps();
   $('numbering').checked=false;$('fromPage').value=1;$('startNumber').value=1;$('numberRange').value='';$('numberExclude').value='';
-  $('pageStack').replaceChildren();$('thumbRail').replaceChildren();$('pageJump').value=1;$('pageLabel').textContent='No PDF';$('fileName').textContent='No document selected';$('documentName').textContent='No document selected';$('download').disabled=true;$('removePdf').disabled=true;$('empty').hidden=false;
+  $('pageStack').replaceChildren();$('thumbRail').replaceChildren();$('pageJump').value=1;$('pageLabel').textContent='No PDF';$('fileName').textContent='No document selected';$('documentName').textContent='No document selected';$('download').disabled=true;if($('utilityRun'))$('utilityRun').disabled=true;$('removePdf').disabled=true;$('empty').hidden=false;
 }
 async function removeDocument(){if(state.busy){tell('Wait for the current operation to finish before removing the PDF.');return;}if(dirtyDocument()&&!await askConfirm('Remove this PDF?','Unsaved changes to this document will be lost.','Remove PDF'))return;await disposeViewer();if(!$('remember').checked){state.items=[];state.active=null;renderStamps();}tell('Document removed. Your original file is unchanged.');}
 async function loadDocument(file){
   if(!file||state.busy)return;
-  state.busy=true;let loading;
+  state.busy=true;if($('utilityRun'))$('utilityRun').disabled=true;let loading;
   try{
     await InkCore.validateFile(file,true);
     if(state.pdf&&dirtyDocument()&&!await askConfirm('Replace this PDF?','Unsaved document edits will be lost. Your original files remain unchanged.','Replace PDF'))return;
@@ -34,7 +34,7 @@ async function loadDocument(file){
     $('fileName').textContent=`${file.name} · ${pdf.numPages} pages · ${(file.size/1024/1024).toFixed(2)} MB`;$('documentName').textContent=file.name;$('fromPage').max=pdf.numPages;$('pageJump').max=pdf.numPages;$('download').disabled=false;$('removePdf').disabled=false;$('empty').hidden=true;
     await setupViewer();tell('PDF ready. Click a thumbnail or scroll through your pages.');
   }catch(e){if(loading)try{await loading.destroy();}catch{}tell(e.name==='PasswordException'?'This PDF needs an opening password. Open it with its password and save an unlocked copy first.':`Could not open PDF: ${e.message}`,true);}
-  finally{state.busy=false;$('pdfInput').value='';$('download').disabled=!state.pdf;}
+  finally{state.busy=false;$('pdfInput').value='';$('download').disabled=!state.pdf;if($('utilityRun'))$('utilityRun').disabled=!state.pdf;if(state.pdf&&$('utilityStatus'))$('utilityStatus').textContent='';}
 }
 async function setupViewer(){
   const generation=Studio.generation,doc=state.pdf;$('pageStack').replaceChildren();$('thumbRail').replaceChildren();Studio.sheets=[];
