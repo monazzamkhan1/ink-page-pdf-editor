@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const state={bytes:null,pdf:null,page:1,name:'document.pdf',items:[],active:null,seq:0,busy:false,renderId:0,renderTask:null};
 const tell=(message,error=false)=>{$('status').textContent=message;$('status').style.color=error?'#b34332':'#46674c';};
 if(!window.pdfjsLib||!window.PDFLib){tell('PDF libraries could not load. Refresh the page.',true);throw new Error('Missing PDF libraries');}
-pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc='/vendor/pdf.worker.mjs';
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 function num(id,min,max){const n=Number($(id).value);if(!Number.isInteger(n)||n<min||n>max)throw new Error(`Check ${$(id).parentElement.textContent.trim()}: enter ${min}–${max}.`);return n;}
 function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
@@ -37,7 +37,8 @@ function persist(){try{if($('remember').checked&&state.items.length)localStorage
 $('sigInput').onchange=async e=>{const files=[...e.target.files];e.target.value='';try{for(const file of files){if(file.size>10*1024*1024)throw new Error(`${file.name} is larger than 10 MB.`);const img=await createImageBitmap(file);const scale=Math.min(1,1600/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);c.getContext('2d').drawImage(img,0,0,c.width,c.height);img.close();await addStamp(c.toDataURL('image/png'));}persist();renderStamps();overlays();tell(`${state.items.length} image${state.items.length>1?'s':''} ready. Drag each into place, then choose Apply.`);}catch(err){tell('Could not load image: '+err.message,true);}};
 $('remember').onchange=persist;
 $('forget').onclick=()=>{try{localStorage.removeItem('ink-page-stamps');localStorage.removeItem('ink-page-signature');}catch{}$('remember').checked=false;tell('Saved images forgotten. Current document is unchanged.');};
-try{const saved=JSON.parse(localStorage.getItem('ink-page-stamps')||'null')||(localStorage.getItem('ink-page-signature')?[localStorage.getItem('ink-page-signature')]:[]);if(saved.length)(async()=>{for(const d of saved)await addStamp(d);$('remember').checked=true;renderStamps();overlays();})().catch(()=>tell('Saved images could not be restored.',true));}catch{}
+// Saved library migration is handled after the modern editor initializes.
+
 function requireSig(){if(!state.pdf||!state.items.length){tell('Upload a PDF and add a signature / stamp image first.',true);return false;}return true;}
 const targets=()=>$('applyAll').checked?state.items:[active()].filter(Boolean);
 $('currentSig').onclick=()=>{if(!requireSig())return;targets().forEach(it=>it.placements.set(state.page,{...placement(it)}));overlays();tell(`Applied to page ${state.page}.`);};

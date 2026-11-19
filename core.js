@@ -1,6 +1,9 @@
 (function(root){
   'use strict';
+  /** @typedef {{x:number,y:number,w:number}} Placement */
+  /** @typedef {{width:number,height:number}} Size */
   const limits={fileBytes:100*1024*1024,pages:1500,totalBytes:400*1024*1024};
+  /** @param {string} value @param {number} total @param {boolean} emptyAll @returns {number[]} */
   function range(value,total,emptyAll=false){
     if(!Number.isInteger(total)||total<1)throw Error('Load a PDF first.');
     const text=String(value).trim().toLowerCase();
@@ -16,6 +19,7 @@
     }
     return [...out];
   }
+  /** @param {Placement} p @param {Size} view @param {number} ratio */
   function bounds(p,view,ratio){
     const w=Math.max(.01,Math.min(.9,Number(p.w)||.22,.9*ratio*view.height/view.width));
     const h=w*view.width/ratio/view.height;
@@ -23,6 +27,7 @@
   }
   function origin(view,p,ratio){const b=bounds(p,view,ratio);return {point:view.convertToPdfPoint(b.x*view.width,(b.y+b.h)*view.height),width:b.w*view.width,height:b.h*view.height,rotation:view.rotation};}
   function signatureType(b){if(b[0]===0x89&&b[1]===0x50&&b[2]===0x4e&&b[3]===0x47)return'png';if(b[0]===255&&b[1]===216)return'jpeg';if(String.fromCharCode(...b.slice(0,4))==='RIFF'&&String.fromCharCode(...b.slice(8,12))==='WEBP')return'webp';return null;}
+  /** @param {File} file @param {boolean} pdfOnly */
   async function validateFile(file,pdfOnly=false){
     if(!file||file.size===0)throw Error('Choose a non-empty file.');
     if(file.size>limits.fileBytes)throw Error('Each file must be 100 MB or smaller.');
@@ -31,6 +36,11 @@
     if(!pdf&&(pdfOnly||!signatureType(head)))throw Error(pdfOnly?'This file does not contain a valid PDF header.':'Choose a PDF, PNG, JPEG or WebP file.');
     return pdf?'pdf':signatureType(head);
   }
-  const api={limits,range,bounds,origin,signatureType,validateFile};
+  function resetDocument(state,keepAssets){
+    state.pdf=null;state.bytes=null;state.page=1;state.name='document.pdf';state.size=0;
+    if(!keepAssets){state.items=[];state.active=null;}
+    else for(const item of state.items){item.placements=new Map();item.draft={x:.68,y:.8,w:.22};}
+  }
+  const api={limits,range,bounds,origin,signatureType,validateFile,resetDocument};
   if(typeof module!=='undefined')module.exports=api;else root.InkCore=api;
 })(typeof window!=='undefined'?window:globalThis);

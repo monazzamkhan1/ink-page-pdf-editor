@@ -21,7 +21,7 @@ if(location.hash==='#merge')show('merge');
 const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('ink-page',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
 async function idbOp(mode,fn){const d=await idb();return new Promise((res,rej)=>{const t=d.transaction('kv',mode);const q=fn(t.objectStore('kv'));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);});}
 let st;const save=()=>{clearTimeout(st);st=setTimeout(()=>{const used=new Set(flat().map(p=>p.s));idbOp('readwrite',s=>s.put({uid:M.uid,gn:M.gn,blocks:M.blocks,src:[...M.src.values()].filter(x=>used.has(x.id)).map(({id,name,type,mime,bytes})=>({id,name,type,mime,bytes}))},'merge')).catch(()=>say('Auto-save failed (storage full?). Your list stays while this tab is open.',1));},500);};
-async function hydrate(s){if(s.type==='pdf'){s.doc=await pdfjsLib.getDocument({data:s.bytes.slice(),isEvalSupported:false}).promise;s.encrypted=(await s.doc.getPermissions())!==null;}else s.url=URL.createObjectURL(new Blob([s.bytes],{type:s.mime}));M.src.set(s.id,s);}
+async function hydrate(s){if(s.type==='pdf'){s.loadingTask=pdfjsLib.getDocument({data:s.bytes.slice(),isEvalSupported:false,enableScripting:false,useWasm:false});s.doc=await s.loadingTask.promise;s.encrypted=(await s.doc.getPermissions())!==null;}else s.url=URL.createObjectURL(new Blob([s.bytes],{type:s.mime}));M.src.set(s.id,s);}
 
 /* ---------- history ---------- */
 function change(){const n=snap();if(n!==M.cur){M.undo.push(M.cur);if(M.undo.length>60)M.undo.shift();M.redo=[];M.cur=n;}render();save();}
@@ -34,10 +34,11 @@ async function addFiles(files,tgt){
   let lastId=null;
   for(const f of files){
     try{
-      const isPdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+      const kind=await InkCore.validateFile(f);const isPdf=kind==='pdf';
+      if([...M.src.values()].reduce((n,s)=>n+s.bytes.length,0)+f.size>InkCore.limits.totalBytes)throw new Error('Workspace limit is 400 MB. Download and remove unneeded items first.');
       if(!isPdf&&!/^image\//.test(f.type))throw new Error('unsupported file type');
       const s={id:nid('s'),name:f.name,mime:isPdf?'application/pdf':f.type,type:isPdf?'pdf':'img',bytes:new Uint8Array(await f.arrayBuffer())};
-      await hydrate(s);const n=isPdf?s.doc.numPages:1;
+      await hydrate(s);const n=isPdf?s.doc.numPages:1;if(n<1||flat().length+n>InkCore.limits.pages){await s.loadingTask?.destroy();M.src.delete(s.id);throw new Error('Use at most 1500 pages in a workspace.');}
       const pages=Array.from({length:n},(_,i)=>({id:nid('p'),s:s.id,i}));
       const b=tgt&&M.blocks.find(x=>x.id===tgt.b);
       if(b){b.pages.splice(tgt.at,0,...pages);tgt.at+=n;M.open.add(b.id);lastId=pages[n-1].id;}else M.blocks.push({id:nid('b'),name:base(f.name),pages});
@@ -132,7 +133,7 @@ $('mExp').onclick=()=>{M.blocks.forEach(b=>M.open.add(b.id));render();};
 $('mCol').onclick=()=>{M.open.clear();render();};
 $('mAll').onclick=()=>{M.blocks.forEach(b=>M.open.add(b.id));M.selB.clear();M.selP=new Set(flat().map(p=>p.id));render();};
 $('mSort').onclick=()=>{M.blocks.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));change();};
-$('mClear').onclick=async()=>{if(!confirm('Remove all files and groups from this list?'))return;M.src.forEach(s=>s.url&&URL.revokeObjectURL(s.url));Object.assign(M,{blocks:[],selB:new Set(),selP:new Set(),open:new Set(),out:null,undo:[],redo:[]});M.src.clear();cache.clear();M.cur=snap();$('mRes').hidden=true;try{await idbOp('readwrite',s=>s.delete('merge'));}catch{}render();say('Cleared.');};
+$('mClear').onclick=async()=>{if(!confirm('Remove all files and groups from this list?'))return;clearTimeout(st);M.src.forEach(s=>{if(s.url)URL.revokeObjectURL(s.url);s.loadingTask?.destroy();});Object.assign(M,{blocks:[],selB:new Set(),selP:new Set(),open:new Set(),out:null,undo:[],redo:[]});M.src.clear();cache.clear();M.cur=snap();$('mRes').hidden=true;try{await idbOp('readwrite',s=>s.delete('merge'));}catch{}render();say('Cleared.');};
 
 /* ---------- the one place every action runs (buttons AND menu) ---------- */
 function run(m,bid,pid,e){
@@ -181,7 +182,7 @@ function run(m,bid,pid,e){
 const L=$('mList');
 L.addEventListener('input',e=>{const el=e.target.closest('.bname');if(!el)return;const b=M.blocks.find(x=>x.id===el.closest('.blk').dataset.b);if(b){b.name=el.value;M.cur=snap();save();}});
 L.addEventListener('click',e=>{
-  const a=e.target.closest('[data-act]');if(!a||a.dataset.act==='name')return;
+  const a=e.target.closest('[data-act]');if(!a){const pc=e.target.closest('.pc');if(pc)run('selp',pc.closest('.blk').dataset.b,pc.dataset.p,e);return;}if(a.dataset.act==='name')return;
   const bEl=a.closest('.blk'),pEl=a.closest('.pc'),pid=pEl&&pEl.dataset.p;
   if(a.dataset.act==='menu'){const r=a.getBoundingClientRect();return openMenu(r.left,r.bottom+4,bEl.dataset.b,pid);}
   run(a.dataset.act,bEl.dataset.b,pid,e);
@@ -233,7 +234,7 @@ async function imagePage(out,s){
   if(s.mime==='image/png')img=await out.embedPng(s.bytes);
   else{const bm=await createImageBitmap(new Blob([s.bytes],{type:s.mime})),k=Math.min(1,2800/Math.max(bm.width,bm.height)),c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(bm,0,0,c.width,c.height);bm.close();const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));img=await out.embedJpg(new Uint8Array(await blob.arrayBuffer()));}
   let pw=img.width,ph=img.height,w=pw,h=ph,x=0,y=0;
-  if($('mImg').value==='a4'){const land=img.width>img.height;pw=land?841.89:595.28;ph=land?595.28:841.89;const k=Math.min((pw-40)/img.width,(ph-40)/img.height);w=img.width*k;h=img.height*k;x=(pw-w)/2;y=(ph-h)/2;}
+  if($('mImg').value!=='orig'){const land=$('mOrientation').value==='landscape'||($('mOrientation').value==='auto'&&img.width>img.height),letter=$('mImg').value==='letter',sw=letter?612:595.28,sh=letter?792:841.89;pw=land?sh:sw;ph=land?sw:sh;const margin=Math.max(0,Math.min(72,Number($('mMargin').value)||0))*2;const k=Math.min((pw-margin)/img.width,(ph-margin)/img.height);w=img.width*k;h=img.height*k;x=(pw-w)/2;y=(ph-h)/2;}
   out.addPage([pw,ph]).drawImage(img,{x,y,width:w,height:h});
 }
 async function buildDirect(pages,prog){
@@ -364,6 +365,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Delete')delSel();
 });
 
+window.InkMerge={pausePersistence:()=>clearTimeout(st)};
 /* ---------- restore after reload ---------- */
 (async()=>{
   try{
