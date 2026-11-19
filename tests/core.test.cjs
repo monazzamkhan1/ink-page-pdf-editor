@@ -1,0 +1,6 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),C=require('../core.js');
+test('ranges preserve requested order and deduplicate',()=>{assert.deepEqual(C.range('last,1,3-5,3',8),[8,1,3,4,5]);assert.deepEqual(C.range('',2,true),[1,2]);});
+test('rejects invalid, descending and out-of-bounds ranges',()=>{for(const s of ['','0','5-2','1,,2','9','a','1-9'])assert.throws(()=>C.range(s,8));});
+test('portrait and landscape placement preserve image ratio and bounds',()=>{for(const view of [{width:595,height:842},{width:842,height:595}]){const p=C.bounds({x:1,y:1,w:.9},view,.1);assert.ok(p.x+p.w<=1.00001&&p.y+p.h<=1.00001);assert.ok(Math.abs(p.w*view.width/(p.h*view.height)-.1)<1e-9);}});
+test('export uses viewport inverse at visible bottom-left',()=>{const v={width:600,height:800,rotation:90,convertToPdfPoint:(x,y)=>[y,x]};const g=C.origin(v,{x:.1,y:.2,w:.2},2);assert.deepEqual(g.point,[220,60]);assert.equal(g.width,120);assert.equal(g.height,60);});
+test('file signatures validate content rather than extension',async()=>{await assert.rejects(()=>C.validateFile(new File(['not pdf'],'fake.pdf'),true));assert.equal(await C.validateFile(new File(['%PDF-1.7\ntest'],'document.bin'),true),'pdf');assert.equal(C.signatureType(new Uint8Array([255,216,255])),'jpeg');});
