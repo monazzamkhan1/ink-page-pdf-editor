@@ -179,15 +179,15 @@ function run(m,bid,pid,e){
   }
   change();
 }
-const L=$('mList');
+const L=$('mList');let pageClickTimer;
 L.addEventListener('input',e=>{const el=e.target.closest('.bname');if(!el)return;const b=M.blocks.find(x=>x.id===el.closest('.blk').dataset.b);if(b){b.name=el.value;M.cur=snap();save();}});
 L.addEventListener('click',e=>{
-  const a=e.target.closest('[data-act]');if(!a){const pc=e.target.closest('.pc');if(pc)run('selp',pc.closest('.blk').dataset.b,pc.dataset.p,e);return;}if(a.dataset.act==='name')return;
+  const a=e.target.closest('[data-act]');if(!a){const pc=e.target.closest('.pc');if(pc){clearTimeout(pageClickTimer);if(e.detail===1){const bid=pc.closest('.blk').dataset.b,pid=pc.dataset.p;pageClickTimer=setTimeout(()=>{if(loc(pid))run('selp',bid,pid,e);},350);}}return;}if(a.dataset.act==='name')return;
   const bEl=a.closest('.blk'),pEl=a.closest('.pc'),pid=pEl&&pEl.dataset.p;
   if(a.dataset.act==='menu'){const r=a.getBoundingClientRect();return openMenu(r.left,r.bottom+4,bEl.dataset.b,pid);}
   run(a.dataset.act,bEl.dataset.b,pid,e);
 });
-L.addEventListener('dblclick',e=>{const pc=e.target.closest('.pc');if(pc&&!e.target.closest('button,input'))view(pc.dataset.p);});
+L.addEventListener('dblclick',e=>{clearTimeout(pageClickTimer);const pc=e.target.closest('.pc');if(pc&&!e.target.closest('button,input'))view(pc.dataset.p);});
 
 /* ---------- right-click / ⋯ menu ---------- */
 const menu=document.createElement('div');menu.id='mMenu';menu.hidden=true;document.body.append(menu);let MC=null;

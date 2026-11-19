@@ -20,8 +20,10 @@ function status(s,error=false){$('utilityStatus').textContent=s;$('utilityStatus
 async function zip(files,name){if(!window.JSZip)await new Promise((res,rej)=>{const s=document.createElement('script');s.src='/vendor/jszip.min.js';s.onload=res;s.onerror=()=>rej(Error('ZIP library failed to load.'));document.head.append(s);});const archive=new JSZip();for(const [name,data]of files)archive.file(name,data);download(await archive.generateAsync({type:'uint8array',compression:'STORE'}),name,'application/zip');}
 async function extractPages(pages){
  const out=await PDFLib.PDFDocument.create();let source;try{source=await PDFLib.PDFDocument.load(state.bytes.slice(),{updateMetadata:false});}catch{}
- for(let i=0;i<pages.length;i++){const n=pages[i];if(source){const [page]=await out.copyPages(source,[n-1]);if(Studio.rotations.has(n)){const {view}=await viewportFor(n);page.setRotation(PDFLib.degrees(view.rotation));}out.addPage(page);}else await rasterPage(out,n);status(`Preparing pages… ${i+1}/${pages.length}`);await new Promise(r=>setTimeout(r));}
- return {bytes:await out.save(),flattened:!source};
+ let flattened=!source;
+ for(let i=0;i<pages.length;i++){const n=pages[i];let copied=false;if(source){try{const scratch=await PDFLib.PDFDocument.create();const [page]=await scratch.copyPages(source,[n-1]);scratch.addPage(page);if(Studio.rotations.has(n)){const {view}=await viewportFor(n);page.setRotation(PDFLib.degrees(view.rotation));}await scratch.save();const [clean]=await out.copyPages(scratch,[0]);out.addPage(clean);copied=true;}catch{}}
+ if(!copied){await rasterPage(out,n);flattened=true;}status(`Preparing pages… ${i+1}/${pages.length}`);await new Promise(r=>setTimeout(r));}
+ return {bytes:await out.save(),flattened};
 }
 async function imageFile(n,mime,dpi,quality){const {page,view}=await viewportFor(n),scale=Math.min(dpi/72,Math.sqrt(8000000/(view.width*view.height))),v=page.getViewport({scale,rotation:view.rotation}),c=document.createElement('canvas');c.width=Math.ceil(v.width);c.height=Math.ceil(v.height);try{await page.render({canvasContext:c.getContext('2d'),viewport:v,background:'#fff'}).promise;return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(Error('Page image failed.')),mime,quality));}finally{c.width=c.height=1;}}
 async function run(){
